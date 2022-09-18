@@ -1,0 +1,3 @@
+[submodule "Waifu2x"]
+	path = Waifu2x
+	url = https://github.com/hanul-ai/Waifu2x.git
