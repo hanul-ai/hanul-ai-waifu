@@ -1,83 +1,47 @@
-import time
-from multiprocessing import Pool, cpu_count
-
-import torch
-from torchvision.utils import save_image
-from Models import *
+from io import BytesIO
 from utils.prepare_images import *
+from Models import *
+from torchvision.utils import save_image
+from torchvision import transforms
+import numpy as np
 
-model_dcscn = DCSCN()
-model_dcscn.load_state_dict(
-    torch.load(
-        "model_check_points/DCSCN/DCSCN_weights_387epos_L12_noise_1.pt",
-        map_location=torch.device("cpu"),
-    )
-)
+def Start_Waifu(image):
+    model_cran_v2 = CARN_V2(color_channels=3, mid_channels=64, conv=nn.Conv2d,
+                            single_conv_size=3, single_conv_group=1,
+                            scale=2, activation=nn.LeakyReLU(0.1),
+                            SEBlock=True, repeat_blocks=3, atrous=(1, 1, 1))
 
-model_upconv7 = UpConv_7()
-model_upconv7.load_pre_train_weights(
-    "model_check_points/Upconv_7/photo/noise1_scale2.0x_model.json"
-)
+    model_cran_v2 = network_to_half(model_cran_v2)
+    checkpoint = "E:/Users/tmfql/OneDrive/문서/GitHub/hanul-ai-waifu/Waifu2x/model_check_points/CRAN_V2/CARN_model_checkpoint.pt"
+    model_cran_v2.load_state_dict(torch.load(checkpoint, 'cpu'))
+    # if use GPU, then comment out the next line so it can use fp16.
+    model_cran_v2 = model_cran_v2.float()
 
-model_cran_v2 = CARN_V2(
-    color_channels=3,
-    mid_channels=64,
-    conv=nn.Conv2d,
-    single_conv_size=3,
-    single_conv_group=1,
-    scale=2,
-    activation=nn.LeakyReLU(0.1),
-    SEBlock=True,
-    repeat_blocks=3,
-    atrous=(1, 1, 1),
-)
-model_cran_v2 = network_to_half(model_cran_v2)
-model_cran_v2.load_state_dict(
-    torch.load("model_check_points/CRAN_V2/CARN_model_checkpoint.pt", "cpu")
-)
-model_cran_v2 = model_cran_v2.float()
-# demo_img = 'demo/demo_imgs/sp_twitter_icon_ao_3.png'
-demo_img = "image.png"
-img = Image.open(demo_img).convert("RGB")
-print("Demo image size : {}".format(img.size))
-img_t = to_tensor(img).unsqueeze(0)
+    img = np.array(Image.open(BytesIO(image)))
+    img = Image.fromarray(img).convert("RGB")
 
-img = img.resize((img.size[0] // 2, img.size[1] // 2), Image.BICUBIC)
-img_bicubic = img.resize((img.size[0] * 2, img.size[1] * 2), Image.BICUBIC)
-img_bicubic = to_tensor(img_bicubic).unsqueeze(0)
+    # origin
+    img_t = to_tensor(img).unsqueeze(0)
 
-if __name__ == "__main__":
-    img_splitter = ImageSplitter(seg_size=48, scale_factor=2, boarder_pad_size=3)
+    # used to compare the origin
+    img = img.resize((img.size[0] // 2, img.size[1] // 2), Image.BICUBIC)
 
-    print("Runing DCSCN models...")
-    start_t = time.time()
-    img_patches = img_splitter.split_img_tensor(
-        img, scale_method=Image.BILINEAR, img_pad=0
-    )
-    with torch.no_grad():
-        out = [model_dcscn(i) for i in img_patches]
-    # with Pool(cpu_count()) as p:
-    #     out = p.map(model_dcscn.forward_checkpoint, img_patches)
-    img_dcscn = img_splitter.merge_img_tensor(out)
-    print(" DCSCN_12 model runtime: {:.3f}".format(time.time() - start_t))
-
-    # start_t = time.time()
-    # img_patches = img_splitter.split_img_tensor(img, scale_method=None, img_pad=model_upconv7.offset)
-    # # with Pool(cpu_count()) as p:
-    # #     out = p.map(model_upconv7.forward_checkpoint, img_patches)
-    # with torch.no_grad():
-    #     out = [model_upconv7(i) for i in img_patches]
-    #     [i.size() for i in img_patches]
-    # img_upconv7 = img_splitter.merge_img_tensor(out)
-    # print("Upconv_7 runtime: {:.3f}".format(time.time() - start_t))
-    #
-
+    # overlapping split
+    # if input image is too large, then split it into overlapped patches
+    # details can be found at [here](https://github.com/nagadomi/waifu2x/issues/238)
+    img_splitter = ImageSplitter(seg_size=64, scale_factor=2, boarder_pad_size=3)
     img_patches = img_splitter.split_img_tensor(img, scale_method=None, img_pad=0)
-    start_t = time.time()
     with torch.no_grad():
         out = [model_cran_v2(i) for i in img_patches]
-    img_cran_v2 = img_splitter.merge_img_tensor(out)
-    print("CRAN V2 runtime: {:.3f}".format(time.time() - start_t))
+    img_upscale = img_splitter.merge_img_tensor(out)
 
-    final = torch.cat([img_t, img_bicubic, img_t, img_dcscn, img_t, img_cran_v2])
-    save_image(final, "out.png", nrow=2)
+    # final = torch.cat([img_t, img_upscale])
+    # save_image(final, 'out.png', nrow=2)
+    pil_image = transforms.ToPILImage()(img_upscale.squeeze_(0))
+
+    byte_io = BytesIO()
+    pil_image.save(byte_io, 'PNG')
+
+    binary_pil = byte_io.getvalue()
+
+    return binary_pil
