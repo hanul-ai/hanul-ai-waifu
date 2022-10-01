@@ -1,19 +1,29 @@
 from io import BytesIO
-from utils.prepare_images import *
-from Models import *
-from torchvision.utils import save_image
-from torchvision import transforms
+
 import numpy as np
+from torchvision import transforms
+
+from Models import *
+from utils.prepare_images import *
+
 
 def Start_Waifu(image):
-    model_cran_v2 = CARN_V2(color_channels=3, mid_channels=64, conv=nn.Conv2d,
-                            single_conv_size=3, single_conv_group=1,
-                            scale=2, activation=nn.LeakyReLU(0.1),
-                            SEBlock=True, repeat_blocks=3, atrous=(1, 1, 1))
+    model_cran_v2 = CARN_V2(
+        color_channels=3,
+        mid_channels=64,
+        conv=nn.Conv2d,
+        single_conv_size=3,
+        single_conv_group=1,
+        scale=2,
+        activation=nn.LeakyReLU(0.1),
+        SEBlock=True,
+        repeat_blocks=3,
+        atrous=(1, 1, 1),
+    )
 
     model_cran_v2 = network_to_half(model_cran_v2)
-    checkpoint = "E:/Users/tmfql/OneDrive/문서/GitHub/hanul-ai-waifu/Waifu2x/model_check_points/CRAN_V2/CARN_model_checkpoint.pt"
-    model_cran_v2.load_state_dict(torch.load(checkpoint, 'cpu'))
+    checkpoint = "model_check_points/CRAN_V2/CARN_model_checkpoint.pt"
+    model_cran_v2.load_state_dict(torch.load(checkpoint, "cpu"))
     # if use GPU, then comment out the next line so it can use fp16.
     model_cran_v2 = model_cran_v2.float()
 
@@ -40,7 +50,7 @@ def Start_Waifu(image):
     pil_image = transforms.ToPILImage()(img_upscale.squeeze_(0))
 
     byte_io = BytesIO()
-    pil_image.save(byte_io, 'PNG')
+    pil_image.save(byte_io, "PNG")
 
     binary_pil = byte_io.getvalue()
 
